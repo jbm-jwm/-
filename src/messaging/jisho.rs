@@ -1,3 +1,8 @@
+use serenity::{
+    model::id::ChannelId,
+    prelude::*,
+};
+
 #[derive(Deserialize,Debug)]
 struct Senses {
     english_definitions: Vec<String>,
@@ -72,4 +77,37 @@ impl MessageInfo {
             false => Ok(msg),
         }
     }
+}
+
+
+pub fn jisho_handler(args: &str, client: &reqwest::Client, ctx: Context, msg: &ChannelId) {
+    if let Ok(value) = MessageInfo::generate_msg(args, client) {
+        if let Ok(_val) = msg.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title(args);
+                e.description(value.m_senses.join(","));
+                e.field("Reading", value.m_reading.join(","), false);
+                e.field(
+                    "Jlpt",
+                    match value.m_jlpt {
+                        Some(value) => value,
+                        None => String::from("None"),
+                    },
+                    false,
+                );
+                e.color(serenity::utils::Colour::from_rgb(81,175,239));
+                e.url("https://jisho.org/search/%E8%8A%B1%23kanji");
+                e
+            });
+            m
+        }) {
+        } else {
+            match msg.say(ctx.http, "Kanji not found please report if it is a bug") {
+                Ok(_) => {}
+                Err(e) => {
+                    println!("Issue recording delete: {:?}", e);
+                }
+            }
+        }
+    };
 }

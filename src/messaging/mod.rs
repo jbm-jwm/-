@@ -1,2 +1,2 @@
 pub mod message;
-mod jisho;
+pub mod jisho;
