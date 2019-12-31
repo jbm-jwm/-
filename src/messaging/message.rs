@@ -54,9 +54,9 @@ impl EventHandler for Handler {
     fn message(&self, ctx: Context, msg: Message) {
         if msg.mentions.iter().any(|u| u.name == BOTNAME) {
             let token: Vec<&str> = msg.content.split(' ').collect();
-            if token.len() == 3 {
+            if token.len() >= 3 {
                 match find_cmp(token[1]) {
-                    Some(value) => value(token[2], &self.m_client, ctx, &msg.channel_id),
+                    Some(value) => value(&token[2..].join(" "), &self.m_client, ctx, &msg.channel_id),
                     None => {
                         let send =
                             format!("Unknown cmd {0} valid cmd are [music,jisho,cpp]", token[1]);
@@ -74,7 +74,8 @@ impl EventHandler for Handler {
                      where valid cmd are:[music, jisho, cpp]",
                     BOTNAME
                 );
-                match msg.channel_id.say(ctx.http, send) {
+                match msg.channel_id.say(ctx.http, send)
+		{
                     Ok(_) => {}
                     Err(e) => {
                         println!("Issue recording delete: {:?}", e);
