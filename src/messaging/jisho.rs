@@ -63,9 +63,10 @@ pub fn generate_msg(
 pub struct Definition {
     kanji: String,
     meaning: Vec<String>,
+    alternate: String,
 }
 
-pub fn generate_msg_def(kanji: &str, client: &reqwest::Client) -> Vec<Definition> {
+pub fn generate_msg_def(kanji: &str, limits: usize, client: &reqwest::Client) -> Vec<Definition> {
     let url = format!("{}{}", "https://jisho.org/search/", kanji);
     //let mut field_lookup: HashMap<&'static str, String> = HashMap::new();
     let mut resp = client
@@ -76,21 +77,34 @@ pub fn generate_msg_def(kanji: &str, client: &reqwest::Client) -> Vec<Definition
     let fragment = Html::parse_document(&body);
     // first get all kanji
     let mut data: Vec<Definition> = Vec::new();
-    for field in  fragment.select(&Selector::parse("div.concept_light.clearfix").unwrap()){
+    if limits != 0 {
+        data.reserve(limits);
+    }
+    let mut cnt: usize = 0;
+    for field in fragment.select(&Selector::parse("div.concept_light.clearfix").unwrap()) {
         for field_kanji in field.select(&Selector::parse("span.text").unwrap()) {
-            let mut field_txt = field_kanji.text().collect::<Vec<&str>>();
-            field_txt.retain(|&elt| !elt.trim().is_empty());
-            let kanji = field_txt.join(" ");
+            let field_txt = field_kanji.text().collect::<Vec<&str>>();
+            let kanji = String::from(field_txt.join(" ").trim());
             let mut meaning: Vec<String> = Vec::new();
+            let mut alternate: String = String::new();
             for field_meaning in field.select(&Selector::parse("div.meaning-definition").unwrap()) {
-                let mut field_txt = field_meaning.text().collect::<Vec<&str>>();
-                field_txt.retain(|&elt| !elt.trim().is_empty());
-                meaning.push(field_txt.join(" "));
+                let field_txt = field_meaning.text().collect::<Vec<&str>>();
+                let tmp: String = String::from(field_txt.join(" ").trim());
+                if !tmp.contains(&"【") {
+                    meaning.push(String::from(&tmp[2..]));
+                } else {
+                    alternate = tmp;
+                }
             }
             data.push(Definition {
                 kanji: kanji,
                 meaning: meaning,
+                alternate: alternate,
             });
+        }
+        cnt += 1;
+        if cnt != 0 && cnt == limits {
+            break;
         }
     }
     data
@@ -131,14 +145,22 @@ pub fn jisho_handler(args: &str, client: &reqwest::Client, ctx: Context, msg: &C
             }
         }
         "word" => {
-            let definitions = generate_msg_def(token[1], client);
+            let mut limits: Result<usize, usize> = Ok(0);
+            if token.len() == 3 {
+                limits = token[2].parse::<usize>().or(Ok(0));
+            }
+            let definitions = generate_msg_def(token[1], limits.unwrap(), client);
+            let kanji = definitions[0].kanji.to_owned();
             for it in definitions.iter() {
                 if let Ok(_mesg) = msg.send_message(&ctx.http, |m| {
                     m.embed(|e| {
+                        let url = format!("https://jisho.org/search/{}", kanji);
                         e.title(it.kanji.clone());
                         e.description(it.meaning[0].clone());
-                        e.field("Senses",it.meaning[1..].join("\n"), false);
+                        e.field("Senses", it.meaning[1..].join("\n"), false);
+                        e.field("Other forms", it.alternate.clone(), false);
                         e.color(serenity::utils::Colour::from_rgb(81, 175, 239));
+                        e.url(url);
                         e
                     });
                     m
