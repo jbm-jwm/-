@@ -80,31 +80,26 @@ pub fn generate_msg_def(kanji: &str, limits: usize, client: &reqwest::Client) ->
     if limits != 0 {
         data.reserve(limits);
     }
-    let mut cnt: usize = 0;
-    for field in fragment.select(&Selector::parse("div.concept_light.clearfix").unwrap()) {
+    for (field,_) in fragment.select(&Selector::parse("div.concept_light.clearfix").unwrap()).zip(1..limits) {
         for field_kanji in field.select(&Selector::parse("span.text").unwrap()) {
             let field_txt = field_kanji.text().collect::<Vec<&str>>();
             let kanji = String::from(field_txt.join(" ").trim());
             let mut meaning: Vec<String> = Vec::new();
-            let mut alternate: String = String::new();
+            let mut alternate: Option<String> = None;
             for field_meaning in field.select(&Selector::parse("div.meaning-definition").unwrap()) {
                 let field_txt = field_meaning.text().collect::<Vec<&str>>();
                 let tmp: String = String::from(field_txt.join(" ").trim());
                 if !tmp.contains(&"【") {
-                    meaning.push(String::from(&tmp[2..]));
+                    meaning.push(String::from(&tmp[0..]));
                 } else {
-                    alternate = tmp;
+                    alternate = Some(tmp);
                 }
             }
             data.push(Definition {
                 kanji: kanji,
                 meaning: meaning,
-                alternate: alternate,
+                alternate: alternate.unwrap_or(String::from("None")),
             });
-        }
-        cnt += 1;
-        if cnt != 0 && cnt == limits {
-            break;
         }
     }
     data
@@ -157,7 +152,9 @@ pub fn jisho_handler(args: &str, client: &reqwest::Client, ctx: Context, msg: &C
                         let url = format!("https://jisho.org/search/{}", kanji);
                         e.title(it.kanji.clone());
                         e.description(it.meaning[0].clone());
-                        e.field("Senses", it.meaning[1..].join("\n"), false);
+                        if it.meaning.len()>1 {
+                            e.field("Senses", it.meaning[1..].join("\n"), false);
+                        }
                         e.field("Other forms", it.alternate.clone(), false);
                         e.color(serenity::utils::Colour::from_rgb(81, 175, 239));
                         e.url(url);
