@@ -7,7 +7,7 @@ static CSS_KANJI: [&str; 6] = [
     ".jlpt",
     ".dictionary_entry.kun_yomi",
     ".dictionary_entry.variants",
-    ".dictionary_entry.on_yomi", // /!\ on yomi contains radicals parts so done on the end
+    ".dictionary_entry.on_yomi", // /!\ on yomi contains radicals parts so done on the end yes a bit ugly
 ];
 
 static JISHO_KEY: [&str; 6] = ["Kanji", "English", "Jlpt", "Kun", "Variants", "On"];
@@ -80,24 +80,27 @@ pub fn generate_msg_def(kanji: &str, limits: usize, client: &reqwest::Client) ->
     if limits != 0 {
         data.reserve(limits);
     }
-    for (field,_) in fragment.select(&Selector::parse("div.concept_light.clearfix").unwrap()).zip(1..limits) {
+    let mut meaning: Vec<String> = Vec::new();
+    for (field, _) in fragment
+        .select(&Selector::parse("div.concept_light.clearfix").unwrap())
+        .zip(1..limits)
+    {
         for field_kanji in field.select(&Selector::parse("span.text").unwrap()) {
             let field_txt = field_kanji.text().collect::<Vec<&str>>();
             let kanji = String::from(field_txt.join(" ").trim());
-            let mut meaning: Vec<String> = Vec::new();
             let mut alternate: Option<String> = None;
             for field_meaning in field.select(&Selector::parse("div.meaning-definition").unwrap()) {
                 let field_txt = field_meaning.text().collect::<Vec<&str>>();
                 let tmp: String = String::from(field_txt.join(" ").trim());
                 if !tmp.contains(&"【") {
-                    meaning.push(String::from(&tmp[0..]));
+                    meaning.push(tmp);
                 } else {
                     alternate = Some(tmp);
                 }
             }
             data.push(Definition {
                 kanji: kanji,
-                meaning: meaning,
+                meaning: meaning.drain(0..).collect(),
                 alternate: alternate.unwrap_or(String::from("None")),
             });
         }
@@ -131,12 +134,9 @@ pub fn jisho_handler(args: &str, client: &reqwest::Client, ctx: Context, msg: &C
                     m
                 }) {}
             } else {
-                match msg.say(ctx.http, "Kanji not found please report if it is a bug") {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("Issue recording delete: {:?}", e);
-                    }
-                }
+                // TODO add a proper logger for error instead of unsafe unwrap
+                msg.say(ctx.http, "Kanji not found please report if it is a bug")
+                    .unwrap();
             }
         }
         "word" => {
@@ -152,7 +152,7 @@ pub fn jisho_handler(args: &str, client: &reqwest::Client, ctx: Context, msg: &C
                         let url = format!("https://jisho.org/search/{}", kanji);
                         e.title(it.kanji.clone());
                         e.description(it.meaning[0].clone());
-                        if it.meaning.len()>1 {
+                        if it.meaning.len() > 1 {
                             e.field("Senses", it.meaning[1..].join("\n"), false);
                         }
                         e.field("Other forms", it.alternate.clone(), false);
